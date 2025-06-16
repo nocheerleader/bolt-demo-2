@@ -209,7 +209,7 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
           variants={cardVariants}
         >
           <Badge 
-            className="mb-4 bg-green-500/20 text-green-400 border-green-500 font-mono text-xs tracking-wider"
+            className="mb-4 bg-pink-500/20 text-pink-400 border-pink-500 font-mono text-xs tracking-wider shadow-lg shadow-pink-500/50"
           >
             SYSTEM UPGRADE AVAILABLE
           </Badge>
