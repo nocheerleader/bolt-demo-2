@@ -5,8 +5,13 @@ import { motion, useInView } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Zap, Shield, Cpu } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Check, Zap, Shield, Cpu, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { stripeProducts, StripeProduct } from "@/stripe-config";
+import { useAuth } from "@/hooks/use-auth";
+import { useSubscription } from "@/hooks/use-subscription";
+import { supabase } from "@/lib/supabase";
 
 interface MatrixRainProps {
   fontSize?: number;
@@ -83,11 +88,10 @@ const MatrixRain: React.FC<MatrixRainProps> = ({
   );
 };
 
-interface PricingTier {
+interface CyberPricingTier {
+  product: StripeProduct;
   name: string;
   icon: React.ReactNode;
-  price: number;
-  originalPrice?: number;
   description: string;
   features: string[];
   popular?: boolean;
@@ -98,18 +102,26 @@ interface PricingTier {
 interface CyberPunkPricingProps {
   title?: string;
   subtitle?: string;
-  tiers?: PricingTier[];
 }
 
 const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
   title = "NEURAL NETWORK PRICING",
-  subtitle = "Choose your cybernetic enhancement package",
-  tiers = [
+  subtitle = "Choose your cybernetic enhancement package"
+}) => {
+  const { user } = useAuth();
+  const { subscription, loading: subscriptionLoading, getSubscriptionPlan } = useSubscription();
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  const containerRef = useRef(null);
+  const isInView = useInView(containerRef, { once: true, amount: 0.2 });
+
+  // Map Stripe products to cyberpunk tiers
+  const tiers: CyberPricingTier[] = [
     {
+      product: stripeProducts.find(p => p.price === 29.00)!,
       name: "BASIC RUNNER",
       icon: <Zap className="w-6 h-6" />,
-      price: 29,
-      originalPrice: 49,
       description: "Entry-level neural interface for street runners",
       features: [
         "Basic Neural Link",
@@ -122,10 +134,9 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
       borderColor: "border-cyan-500"
     },
     {
+      product: stripeProducts.find(p => p.price === 89.00)!,
       name: "ELITE HACKER",
       icon: <Shield className="w-6 h-6" />,
-      price: 89,
-      originalPrice: 149,
       description: "Advanced cybernetic suite for professional netrunners",
       features: [
         "Advanced Neural Interface",
@@ -140,10 +151,9 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
       borderColor: "border-emerald-500"
     },
     {
+      product: stripeProducts.find(p => p.price === 199.00)!,
       name: "CORPO ELITE",
       icon: <Cpu className="w-6 h-6" />,
-      price: 199,
-      originalPrice: 299,
       description: "Corporate-grade neural enhancement for data fortress infiltration",
       features: [
         "Quantum Neural Matrix",
@@ -157,10 +167,65 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
       glowColor: "purple",
       borderColor: "border-purple-500"
     }
-  ]
-}) => {
-  const containerRef = useRef(null);
-  const isInView = useInView(containerRef, { once: true, amount: 0.2 });
+  ];
+
+  const handleSubscribe = async (tier: CyberPricingTier) => {
+    if (!user) {
+      window.location.href = '/login';
+      return;
+    }
+
+    const productId = tier.product.id;
+    setLoadingStates(prev => ({ ...prev, [productId]: true }));
+    setErrors(prev => ({ ...prev, [productId]: '' }));
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        setErrors(prev => ({ ...prev, [productId]: 'Please sign in to continue' }));
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          price_id: tier.product.priceId,
+          mode: tier.product.mode,
+          success_url: `${window.location.origin}/success`,
+          cancel_url: `${window.location.origin}/`,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create checkout session');
+      }
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      setErrors(prev => ({ 
+        ...prev, 
+        [productId]: err instanceof Error ? err.message : 'An unexpected error occurred' 
+      }));
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [productId]: false }));
+    }
+  };
+
+  const isCurrentPlan = (tier: CyberPricingTier) => {
+    return subscription?.price_id === tier.product.priceId;
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -209,7 +274,7 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
           variants={cardVariants}
         >
           <Badge 
-            className="mb-4 bg-pink-500/20 text-pink-400 border-pink-500 font-mono text-xs tracking-wider shadow-lg shadow-pink-500/50"
+            className="mb-4 bg-green-500/20 text-green-400 border-green-500 font-mono text-xs tracking-wider"
           >
             SYSTEM UPGRADE AVAILABLE
           </Badge>
@@ -224,120 +289,152 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
-          {tiers.map((tier, index) => (
-            <motion.div
-              key={tier.name}
-              variants={cardVariants}
-              className="relative group"
-            >
-              <Card className={cn(
-                "relative h-full bg-black/80 backdrop-blur-sm border-2 transition-all duration-500",
-                tier.borderColor,
-                "hover:shadow-2xl hover:scale-105",
-                tier.popular && "ring-2 ring-emerald-500/50"
-              )}>
-                
-                {/* Glow Effect */}
-                <div className={cn(
-                  "absolute inset-0 rounded-lg opacity-0 group-hover:opacity-20 transition-opacity duration-500 blur-xl",
-                  tier.glowColor === "cyan" && "bg-cyan-500",
-                  tier.glowColor === "emerald" && "bg-emerald-500", 
-                  tier.glowColor === "purple" && "bg-purple-500"
-                )}></div>
+          {tiers.map((tier, index) => {
+            const isLoading = loadingStates[tier.product.id];
+            const error = errors[tier.product.id];
+            const isCurrent = isCurrentPlan(tier);
 
-                {/* Popular Badge */}
-                {tier.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-20">
-                    <Badge className="bg-emerald-500 text-black font-mono text-xs px-3 py-1 animate-pulse">
-                      MOST POPULAR
-                    </Badge>
-                  </div>
-                )}
+            return (
+              <motion.div
+                key={tier.product.id}
+                variants={cardVariants}
+                className="relative group"
+              >
+                <Card className={cn(
+                  "relative h-full bg-black/80 backdrop-blur-sm border-2 transition-all duration-500",
+                  tier.borderColor,
+                  "hover:shadow-2xl hover:scale-105",
+                  tier.popular && "ring-2 ring-emerald-500/50",
+                  isCurrent && "ring-2 ring-yellow-500/50"
+                )}>
+                  
+                  {/* Glow Effect */}
+                  <div className={cn(
+                    "absolute inset-0 rounded-lg opacity-0 group-hover:opacity-20 transition-opacity duration-500 blur-xl",
+                    tier.glowColor === "cyan" && "bg-cyan-500",
+                    tier.glowColor === "emerald" && "bg-emerald-500", 
+                    tier.glowColor === "purple" && "bg-purple-500"
+                  )}></div>
 
-                <div className="relative z-10 p-8">
-                  {/* Icon and Title */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={cn(
-                      "p-2 rounded-lg border",
-                      tier.borderColor,
-                      tier.glowColor === "cyan" && "bg-cyan-500/10",
-                      tier.glowColor === "emerald" && "bg-emerald-500/10",
-                      tier.glowColor === "purple" && "bg-purple-500/10"
-                    )}>
-                      {tier.icon}
+                  {/* Popular Badge */}
+                  {tier.popular && (
+                    <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-20">
+                      <Badge className="bg-emerald-500 text-black font-mono text-xs px-3 py-1 animate-pulse">
+                        MOST POPULAR
+                      </Badge>
                     </div>
-                    <h3 className="text-xl font-bold font-mono text-white">
-                      {tier.name}
-                    </h3>
-                  </div>
+                  )}
 
-                  <p className="text-sm text-green-300/70 mb-6 font-mono">
-                    {tier.description}
-                  </p>
-
-                  {/* Pricing */}
-                  <div className="mb-8">
-                    <div className="flex items-baseline gap-2 mb-2">
-                      <span className="text-4xl font-bold text-white font-mono">
-                        ${tier.price}
-                      </span>
-                      {tier.originalPrice && (
-                        <span className="text-lg text-red-400 line-through font-mono">
-                          ${tier.originalPrice}
-                        </span>
-                      )}
+                  {/* Current Plan Badge */}
+                  {isCurrent && (
+                    <div className="absolute -top-3 right-4 z-20">
+                      <Badge className="bg-yellow-500 text-black font-mono text-xs px-3 py-1">
+                        CURRENT PLAN
+                      </Badge>
                     </div>
-                    <span className="text-sm text-green-300/60 font-mono">
-                      /month • Neural subscription
-                    </span>
-                  </div>
+                  )}
 
-                  {/* Features */}
-                  <div className="space-y-3 mb-8">
-                    {tier.features.map((feature, featureIndex) => (
-                      <div key={featureIndex} className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-5 h-5 rounded border flex items-center justify-center",
-                          tier.borderColor
-                        )}>
-                          <Check className="w-3 h-3 text-green-400" />
-                        </div>
-                        <span className="text-sm text-green-300 font-mono">
-                          {feature}
+                  <div className="relative z-10 p-8">
+                    {/* Icon and Title */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={cn(
+                        "p-2 rounded-lg border",
+                        tier.borderColor,
+                        tier.glowColor === "cyan" && "bg-cyan-500/10",
+                        tier.glowColor === "emerald" && "bg-emerald-500/10",
+                        tier.glowColor === "purple" && "bg-purple-500/10"
+                      )}>
+                        {tier.icon}
+                      </div>
+                      <h3 className="text-xl font-bold font-mono text-white">
+                        {tier.name}
+                      </h3>
+                    </div>
+
+                    <p className="text-sm text-green-300/70 mb-6 font-mono">
+                      {tier.description}
+                    </p>
+
+                    {/* Pricing */}
+                    <div className="mb-8">
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <span className="text-4xl font-bold text-white font-mono">
+                          ${tier.product.price}
                         </span>
                       </div>
-                    ))}
+                      <span className="text-sm text-green-300/60 font-mono">
+                        /month • Neural subscription
+                      </span>
+                    </div>
+
+                    {/* Features */}
+                    <div className="space-y-3 mb-8">
+                      {tier.features.map((feature, featureIndex) => (
+                        <div key={featureIndex} className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-5 h-5 rounded border flex items-center justify-center",
+                            tier.borderColor
+                          )}>
+                            <Check className="w-3 h-3 text-green-400" />
+                          </div>
+                          <span className="text-sm text-green-300 font-mono">
+                            {feature}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Error Message */}
+                    {error && (
+                      <Alert variant="destructive" className="mb-4">
+                        <AlertDescription className="font-mono text-xs">
+                          {error}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {/* CTA Button */}
+                    <Button
+                      onClick={() => handleSubscribe(tier)}
+                      disabled={isLoading || isCurrent || subscriptionLoading}
+                      className={cn(
+                        "w-full h-12 font-mono text-sm font-bold transition-all duration-300 relative overflow-hidden group/btn",
+                        isCurrent
+                          ? "bg-yellow-500/20 border-yellow-500 text-yellow-400 cursor-not-allowed"
+                          : tier.popular 
+                          ? "bg-emerald-500 hover:bg-emerald-400 text-black border-emerald-500" 
+                          : "bg-transparent border-2 text-green-400 hover:bg-green-500/10",
+                        !isCurrent && tier.borderColor
+                      )}
+                    >
+                      <span className="relative z-10 flex items-center justify-center gap-2">
+                        {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {isCurrent 
+                          ? "CURRENT PLAN" 
+                          : isLoading 
+                          ? "PROCESSING..." 
+                          : "JACK IN NOW"
+                        }
+                      </span>
+                      {!isCurrent && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-700"></div>
+                      )}
+                    </Button>
                   </div>
 
-                  {/* CTA Button */}
-                  <Button
-                    className={cn(
-                      "w-full h-12 font-mono text-sm font-bold transition-all duration-300 relative overflow-hidden group/btn",
-                      tier.popular 
-                        ? "bg-emerald-500 hover:bg-emerald-400 text-black border-emerald-500" 
-                        : "bg-transparent border-2 text-green-400 hover:bg-green-500/10",
-                      tier.borderColor
-                    )}
-                  >
-                    <span className="relative z-10">
-                      JACK IN NOW
-                    </span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-700"></div>
-                  </Button>
-                </div>
-
-                {/* Corner Accents */}
-                <div className={cn(
-                  "absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2",
-                  tier.borderColor
-                )}></div>
-                <div className={cn(
-                  "absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2",
-                  tier.borderColor
-                )}></div>
-              </Card>
-            </motion.div>
-          ))}
+                  {/* Corner Accents */}
+                  <div className={cn(
+                    "absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2",
+                    tier.borderColor
+                  )}></div>
+                  <div className={cn(
+                    "absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2",
+                    tier.borderColor
+                  )}></div>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* Footer */}
@@ -349,6 +446,11 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
           <p className="text-sm text-green-300/60 font-mono">
             All packages include quantum-encrypted data transmission and neural firewall protection
           </p>
+          {!user && (
+            <p className="text-xs text-green-300/40 font-mono mt-2">
+              Sign in required to access neural enhancement protocols
+            </p>
+          )}
         </motion.div>
       </motion.div>
     </div>
