@@ -413,7 +413,7 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
                           ? "CURRENT PLAN" 
                           : isLoading 
                           ? "PROCESSING..." 
-                          : "JACK IN NOW"
+                          : "START FREE TRIAL"
                         }
                       </span>
                       {!isCurrent && (
