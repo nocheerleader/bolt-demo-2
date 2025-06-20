@@ -120,7 +120,7 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
   const tiers: CyberPricingTier[] = [
     {
       product: stripeProducts.find(p => p.price === 29.00)!,
-      name: "BASIC RUNNER",
+      name: "BASIC",
       icon: <Zap className="w-6 h-6" />,
       description: "Entry-level neural interface for street runners",
       features: [
@@ -135,7 +135,7 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
     },
     {
       product: stripeProducts.find(p => p.price === 89.00)!,
-      name: "ELITE HACKER",
+      name: "ELITE",
       icon: <Shield className="w-6 h-6" />,
       description: "Advanced cybernetic suite for professional netrunners",
       features: [
@@ -152,7 +152,7 @@ const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
     },
     {
       product: stripeProducts.find(p => p.price === 199.00)!,
-      name: "CORPO ELITE",
+      name: "ENTERPRISE",
       icon: <Cpu className="w-6 h-6" />,
       description: "Corporate-grade neural enhancement for data fortress infiltration",
       features: [
