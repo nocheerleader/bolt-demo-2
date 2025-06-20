@@ -105,8 +105,8 @@ interface CyberPunkPricingProps {
 }
 
 const CyberPunkPricing: React.FC<CyberPunkPricingProps> = ({
-  title = "NEURAL NETWORK PRICING",
-  subtitle = "Choose your cybernetic enhancement package"
+  title = "PLANS AND PRICING",
+  subtitle = "Simple and transparent pricing"
 }) => {
   const { user } = useAuth();
   const { subscription, loading: subscriptionLoading, getSubscriptionPlan } = useSubscription();
